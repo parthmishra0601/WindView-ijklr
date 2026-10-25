@@ -59,6 +59,15 @@ type MonthData = {
   metrics: Metrics;
 };
 
+type Page = "overview" | "daily" | "accuracy";
+
+function pageFromHash(): Page {
+  const route = window.location.hash.replace(/^#\/?/, "").split("?")[0];
+  if (route === "daily") return "daily";
+  if (route === "accuracy") return "accuracy";
+  return "overview";
+}
+
 const number = (value: number | null | undefined, digits = 0) =>
   value == null
     ? "—"
@@ -82,6 +91,7 @@ async function fetchJson<T>(path: string): Promise<T> {
 }
 
 function App() {
+  const [activePage, setActivePage] = useState<Page>(pageFromHash);
   const [selectedDay, setSelectedDay] = useState("2026-01-15");
   const [decisionHour, setDecisionHour] = useState(12);
   const [month, setMonth] = useState<MonthData | null>(null);
@@ -117,6 +127,14 @@ function App() {
 
   useEffect(() => { void loadMonth(); }, [decisionHour]);
   useEffect(() => { void loadDay(); }, [selectedDay, decisionHour]);
+  useEffect(() => {
+    const updatePage = () => setActivePage(pageFromHash());
+    window.addEventListener("hashchange", updatePage);
+    return () => window.removeEventListener("hashchange", updatePage);
+  }, []);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activePage]);
 
   const daily = month?.daily ?? [];
   const activeDay = day?.metrics;
@@ -130,6 +148,20 @@ function App() {
   );
   const maxDailyMae = Math.max(1, ...daily.map((point) => point.mae_mw ?? 0));
   const bias = month?.metrics.bias_mw ?? null;
+  const pageHeading = {
+    overview: {
+      title: "Wind, in focus.",
+      description: "Make your day-ahead decisions with a clearer view of the wind ahead.",
+    },
+    daily: {
+      title: "Daily forecast",
+      description: "Inspect a delivery day's forecast vintage alongside verified generation.",
+    },
+    accuracy: {
+      title: "Forecast accuracy",
+      description: "Compare day-ahead forecast errors across January 2026.",
+    },
+  }[activePage];
 
   function exportCsv() {
     if (!day) return;
@@ -160,9 +192,9 @@ function App() {
         </div>
         <div className="nav-label">WORKSPACE</div>
         <nav>
-          <a className="nav-item active" href="#overview"><BarChart3 size={17} /> Overview</a>
-          <a className="nav-item" href="#daily"><CalendarDays size={17} /> Daily forecast</a>
-          <a className="nav-item" href="#accuracy"><Activity size={17} /> Accuracy analysis</a>
+          <a className={`nav-item ${activePage === "overview" ? "active" : ""}`} href="#/overview" aria-current={activePage === "overview" ? "page" : undefined}><BarChart3 size={17} /> Overview</a>
+          <a className={`nav-item ${activePage === "daily" ? "active" : ""}`} href="#/daily" aria-current={activePage === "daily" ? "page" : undefined}><CalendarDays size={17} /> Daily forecast</a>
+          <a className={`nav-item ${activePage === "accuracy" ? "active" : ""}`} href="#/accuracy" aria-current={activePage === "accuracy" ? "page" : undefined}><Activity size={17} /> Accuracy analysis</a>
         </nav>
         <div className="sidebar-bottom">
           <div className="data-status"><span className="status-dot" style={month ? undefined : { background: "#bb7565", boxShadow: "0 0 0 3px #f8ece8" }} /> {month ? "Elexon data connected" : loadingMonth ? "Connecting to Elexon" : "Elexon data unavailable"}</div>
@@ -180,7 +212,7 @@ function App() {
 
       <main className="main-content">
         <header className="topbar">
-          <div className="breadcrumb">Portfolio <span>/</span> <b>Wind intelligence</b></div>
+          <div className="breadcrumb">Portfolio <span>/</span> <b>{activePage === "accuracy" ? "Accuracy analysis" : activePage === "daily" ? "Daily forecast" : "Wind intelligence"}</b></div>
           <div className="top-actions">
             <div className="period-pill"><span className="status-dot" /> Historical pilot · January 2026</div>
             <button className="icon-button" aria-label="Refresh data" onClick={() => { void loadMonth(); void loadDay(); }}><RefreshCw size={16} /></button>
@@ -188,11 +220,11 @@ function App() {
           </div>
         </header>
 
-        <section className="page-heading" id="overview">
+        <section className="page-heading">
           <div>
             <div className="eyebrow"><Leaf size={14} /> RENEWABLE INTELLIGENCE</div>
-            <h1>Wind, in focus.</h1>
-            <p>Make your day-ahead decisions with a clearer view of the wind ahead.</p>
+            <h1>{pageHeading.title}</h1>
+            <p>{pageHeading.description}</p>
           </div>
           <div className="decision-control">
             <label htmlFor="decision-hour"><Clock3 size={15} /> Decision cutoff</label>
@@ -211,7 +243,7 @@ function App() {
           </div>
         )}
 
-        <section className="metric-grid" aria-label="January forecast metrics">
+        {activePage !== "daily" && <section className="metric-grid" aria-label="January forecast metrics">
           <MetricCard label="Mean forecast wind" value={number(month?.metrics.mean_forecast_mw)} unit="MW" icon={<Wind size={17} />} foot="Day-ahead forecast · national" loading={loadingMonth} tint="green" />
           <MetricCard label="Mean actual wind" value={number(month?.metrics.mean_actual_mw)} unit="MW" icon={<Activity size={17} />} foot="Elexon FUELHH · national" loading={loadingMonth} tint="blue" />
           <MetricCard label="Mean absolute error" value={number(month?.metrics.mae_mw)} unit="MW" icon={<BarChart3 size={17} />} foot="Across matched hourly periods" loading={loadingMonth} tint="orange" />
@@ -224,10 +256,10 @@ function App() {
             loading={loadingMonth}
             tint="violet"
           />
-        </section>
+        </section>}
 
-        <section className="dashboard-grid">
-          <article className="card chart-card" id="daily">
+        {activePage !== "accuracy" && <section className={`dashboard-grid ${activePage === "daily" ? "daily-page-layout" : ""}`}>
+          <article className="card chart-card">
             <div className="card-heading">
               <div><div className="section-kicker">INTRADAY PROFILE</div><h2>Forecast vs. actual</h2><p>{niceDate(selectedDay)} <span className="subtle-dot">·</span> National wind generation</p></div>
               <div className="chart-actions">
@@ -247,12 +279,12 @@ function App() {
             <div className="chart-foot"><ShieldCheck size={15} /><span>Forecast vintage is frozen at the selected day-ahead cutoff. Actuals are shown for verification only.</span></div>
           </article>
 
-          <article className="card daily-card">
+          {activePage === "overview" && <article className="card daily-card">
             <div className="card-heading compact"><div><div className="section-kicker">JANUARY 2026</div><h2>Accuracy by day</h2><p>Mean absolute error · MW</p></div><span className="tiny-badge">31 days</span></div>
-            <div className="daily-list" id="accuracy">
+            <div className="daily-list">
               {loadingMonth ? <div className="list-loading"><span className="spinner" /> Loading daily analysis…</div> :
                 daily.map((item) => (
-                  <button key={item.date} className={`daily-row ${item.date === selectedDay ? "selected" : ""}`} onClick={() => setSelectedDay(item.date)} aria-label={`${niceDate(item.date)} MAE ${number(item.mae_mw)} megawatts`}>
+                  <button key={item.date} className={`daily-row ${item.date === selectedDay ? "selected" : ""}`} onClick={() => { setSelectedDay(item.date); window.location.hash = "#/daily"; }} aria-label={`${niceDate(item.date)} MAE ${number(item.mae_mw)} megawatts`}>
                     <span className="day-num">{Number(item.date.slice(-2))}</span>
                     <span className="bar-track"><i style={{ width: `${Math.max(2, ((item.mae_mw ?? 0) / maxDailyMae) * 100)}%` }} /></span>
                     <span className="daily-value">{number(item.mae_mw)}</span>
@@ -260,10 +292,36 @@ function App() {
                 ))}
             </div>
             <div className="daily-card-foot"><span>LOWER IS BETTER</span><span>MAE · MW</span></div>
-          </article>
-        </section>
+          </article>}
+        </section>}
 
-        <section className="lower-grid">
+        {activePage === "accuracy" && <section className="card accuracy-table-card">
+          <div className="card-heading compact">
+            <div><div className="section-kicker">DELIVERY-DAY BREAKDOWN</div><h2>Daily forecast errors</h2><p>Each row uses the selected day-ahead forecast cutoff.</p></div>
+            <span className="tiny-badge">31 days</span>
+          </div>
+          <div className="accuracy-table-wrap">
+            <table className="accuracy-table">
+              <thead><tr><th>Delivery date</th><th>MAE <small>MW</small></th><th>Bias <small>MW</small></th><th>Matched hours</th><th>Daily error</th></tr></thead>
+              <tbody>
+                {loadingMonth
+                  ? <tr><td colSpan={5}><span className="table-loading"><span className="spinner" /> Loading daily analysis…</span></td></tr>
+                  : daily.map((item) => (
+                    <tr key={item.date} className="accuracy-data-row" onClick={() => { setSelectedDay(item.date); window.location.hash = "#/daily"; }} tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter") { setSelectedDay(item.date); window.location.hash = "#/daily"; } }}>
+                      <td>{niceDate(item.date)}</td>
+                      <td>{number(item.mae_mw, 1)}</td>
+                      <td className={item.bias_mw != null && item.bias_mw > 0 ? "bias-positive" : "bias-negative"}>{number(item.bias_mw, 1)}</td>
+                      <td>{item.matched_hours} / 24</td>
+                      <td><span className="table-bar-track"><i style={{ width: `${Math.max(2, ((item.mae_mw ?? 0) / maxDailyMae) * 100)}%` }} /></span></td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="chart-foot"><ShieldCheck size={15} /><span>Positive bias means forecast generation was above actual generation. Select a row to inspect that delivery day.</span></div>
+        </section>}
+
+        {activePage !== "accuracy" && <section className="lower-grid">
           <article className="card selected-card">
             <div className="card-heading compact"><div><div className="section-kicker">SELECTED DELIVERY DAY</div><h2>{niceDate(selectedDay)}</h2></div><span className="tiny-badge date-badge"><CalendarDays size={13} /> {selectedDay}</span></div>
             <div className="selected-stats">
@@ -278,7 +336,7 @@ function App() {
             <div><div className="section-kicker">DECISION CONTEXT</div><h2>Forecast uncertainty, made visible.</h2><p>{activeDay?.mae_mw != null ? `On this day, the selected forecast vintage missed actual wind generation by ${number(activeDay.mae_mw)} MW on average across ${activeDay.matched_hours} matched hours.` : "Select a day to inspect its verified forecast performance. A higher forecast than actual may mean more balancing generation is needed."}</p></div>
             <span className="insight-watermark"><Wind size={82} /></span>
           </article>
-        </section>
+        </section>}
 
         <footer className="page-footer"><span>WindView <span className="subtle-dot">·</span> Decision support pilot</span><span>Source: Elexon BMRS <span className="subtle-dot">·</span> All times UTC <span className="subtle-dot">·</span> Historical data</span></footer>
       </main>
