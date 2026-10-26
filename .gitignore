@@ -9,5 +9,3 @@ backend/**/__pycache__/
 .vercel/
 *.py[cod]
 *.tsbuildinfo
-frontend/vite.config.js
-frontend/vite.config.d.ts

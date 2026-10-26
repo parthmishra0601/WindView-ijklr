@@ -1,4 +1,4 @@
-from app.main import calculate_metrics, hourly_actuals, latest_forecasts, parse_time
+from app.services import calculate_metrics, hourly_actuals, latest_forecasts, parse_time
 
 
 def test_metrics_ignore_unmatched_hours_and_zero_denominators():
